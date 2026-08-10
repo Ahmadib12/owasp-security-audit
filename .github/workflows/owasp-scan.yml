@@ -1,0 +1,117 @@
+name: OWASP Top 10 Security Audit
+
+on:
+  push:
+    branches: [ "main", "master", "develop" ]
+  pull_request:
+    branches: [ "main", "master", "develop" ]
+   
+permissions:
+  contents: read          # least privilege, only read repo contents
+  security-events: write  # needed if you upload SARIF results
+jobs:
+  owasp-sast-scan:
+    name: OWASP Code & IaC Security Scan
+    runs-on: ubuntu-latest
+jobs:
+  owasp-sast-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Run Bandit
+        run: bandit -r . -f json -o bandit.json
+
+      - name: Upload Bandit JSON results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-results
+          path: bandit.json
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      # -------------------------------------------------------------
+      # 1. Semgrep: OWASP Top 10 Multi-Language Ruleset
+      # -------------------------------------------------------------
+      - name: Run Semgrep (OWASP Ruleset)
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/owasp-top-10
+
+      # -------------------------------------------------------------
+      # 2. Bandit: Python Security Rules (Injection, Crypto, Secrets)
+      # -------------------------------------------------------------
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install & Run Bandit
+        run: |
+          pip install bandit
+          # Scans recursively, reporting Medium/High confidence/severity issues
+          bandit -r . -l -iii
+
+      # -------------------------------------------------------------
+      # 3. Checkov: Infrastructure as Code & Security Misconfigurations
+      # -------------------------------------------------------------
+      - name: Run Checkov Scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: '.'
+          framework: 'all'
+          output_format: 'cli'
+          soft_fail: false # Set to true if you don't want checkov to fail the pipelinename: OWASP Top 10 Security Audit
+
+on:
+  push:
+    branches: [ "main", "master", "develop" ]
+  pull_request:
+    branches: [ "main", "master", "develop" ]
+
+jobs:
+  owasp-sast-scan:
+    name: OWASP Code & IaC Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      # -------------------------------------------------------------
+      # 1. Semgrep: OWASP Top 10 Multi-Language Ruleset
+      # -------------------------------------------------------------
+      - name: Run Semgrep (OWASP Ruleset)
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/owasp-top-10
+
+      # -------------------------------------------------------------
+      # 2. Bandit: Python Security Rules (Injection, Crypto, Secrets)
+      # -------------------------------------------------------------
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install & Run Bandit
+        run: |
+          pip install bandit
+          # Scans recursively, reporting Medium/High confidence/severity issues
+          bandit -r . -l -iii
+
+      # -------------------------------------------------------------
+      # 3. Checkov: Infrastructure as Code & Security Misconfigurations
+      # -------------------------------------------------------------
+      - name: Run Checkov Scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: '.'
+          framework: 'all'
+          output_format: 'cli'
+          soft_fail: false # Set to true if you don't want checkov to fail the pipeline
