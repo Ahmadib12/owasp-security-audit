@@ -150,8 +150,5 @@ By implementing this workflow, developers will:
 - Build a culture of **secure coding and continuous monitoring**.  
 ```
 
----
 
-👉 This version now includes **every command explained in detail** and aligned to OWASP Top 10. Paste it into your repo as `README.md`, commit, and push — it will look professional and educational.  
-
-Would you like me to also add a **diagram (Mermaid flowchart)** showing how the workflow runs step‑by‑step (checkout → Bandit → Semgrep → Checkov → upload results) so your README looks even more polished?
+Would you like me to also add a **diagram (Mermaid flowchart)** showing how the workflow runs step‑by‑step (checkout → Bandit → Semgrep → Checkov → upload results) so your READM
