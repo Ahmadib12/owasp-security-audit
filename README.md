@@ -151,4 +151,4 @@ By implementing this workflow, developers will:
 ```
 
 
-Would you like me to also add a **diagram (Mermaid flowchart)** showing how the workflow runs step‑by‑step (checkout → Bandit → Semgrep → Checkov → upload results) so your READM
+
