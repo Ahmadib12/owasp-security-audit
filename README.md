@@ -4,25 +4,28 @@
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 [![OWASP Top 10](https://img.shields.io/badge/OWASP-Top%2010-orange)](https://owasp.org/www-project-top-ten/)
 
-One-line: GitHub Actions workflow to run SAST and IaC security scans (Bandit, Semgrep, Checkov) and map findings to OWASP Top 10 risks.
+One-line: GitHub Actions workflow and local tooling to run SAST and IaC scans (Bandit, Semgrep, Checkov) and map findings to OWASP Top 10 risks.
 
 Table of contents
-- Quickstart
-- Example GitHub Actions workflow
-- What the tools do
-- Uploading & triaging results
-- Configuration & reducing noise
-- Performance, security & permissions notes
-- Mermaid flowchart (visual)
-- References
-- Contributing / License
+- [Quickstart (local)](#quickstart-local)
+- [Example GitHub Actions workflow](#example-github-actions-workflow)
+- [What the tools cover (mapping to OWASP Top 10)](#what-the-tools-cover-mapping-to-owasp-top-10)
+- [Uploading & triaging results](#uploading--triaging-results)
+- [Configuration & reducing noise](#configuration--reducing-noise)
+- [Baseline & workflow for noisy repos](#baseline--workflow-for-noisy-repos)
+- [Interpreting findings](#interpreting-findings)
+- [Performance, security & permissions notes](#performance-security--permissions-notes)
+- [Mermaid flowchart (visual)](#mermaid-flowchart-visual)
+- [References](#references)
+- [Contributing & Security](#contributing--security)
+- [License](#license)
 
 ---
 
 ## Quickstart (local)
 
 Prerequisites
-- Python 3.8+ (for Bandit & Semgrep)
+- Python 3.8+ (Bandit, Semgrep)
 - pip
 - checkov (Python package)
 
@@ -32,11 +35,16 @@ python -m pip install --upgrade pip
 pip install bandit semgrep checkov
 ```
 
-Run the scans locally
+Run scans locally (examples)
 ```bash
-bandit -r . -f json -o bandit.json
-semgrep --config "p/owasp-top-ten" --json --output semgrep.json .
-checkov -d . --output sarif --output-file-path checkov_results.sarif
+# Bandit (JSON)
+bandit -r . -f json -o bandit.json || true
+
+# Semgrep (OWASP policy pack)
+semgrep --config "p/owasp-top-ten" --json --output semgrep.json . || true
+
+# Checkov (SARIF)
+checkov -d . --output sarif --output-file-path checkov_results.sarif || true
 ```
 
 Expect output files:
@@ -44,11 +52,19 @@ Expect output files:
 - semgrep.json
 - checkov_results.sarif
 
+Quick tip: run scans against changed paths in PRs to reduce noise and runtime.
+
 ---
 
 ## Example GitHub Actions workflow
 
-Save this as `.github/workflows/owasp-scan.yml` to run in CI.
+Save as `.github/workflows/owasp-scan.yml`.
+
+Notes included in the workflow:
+- Cache pip to reduce repeated installs.
+- Limit permissions to minimal required.
+- Use `|| true` on scan commands when you want findings to not fail the job.
+- Upload artifacts and SARIF only when produced.
 
 ```yaml
 name: OWASP Top 10 Security Audit
@@ -78,6 +94,14 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
       - name: Install scanners
         run: |
           python -m pip install --upgrade pip
@@ -93,6 +117,7 @@ jobs:
         run: checkov -d . --output sarif --output-file-path checkov_results.sarif || true
 
       - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: security-scan-results
@@ -100,28 +125,29 @@ jobs:
             bandit.json
             semgrep.json
             checkov_results.sarif
+          retention-days: 14
 
       - name: Upload SARIF to GitHub (for Code scanning)
-        if: always()
+        if: ${{ always() }}
         uses: github/codeql-action/upload-sarif@v2
         with:
           sarif_file: checkov_results.sarif
 ```
 
-Notes:
-- `|| true` ensures scans don't fail the job due to non-zero exit codes caused by findings; remove if you want failures to block merges.
-- Semgrep can produce SARIF via `--output-file` + converter or via newer Semgrep flags — check Semgrep docs to upload SARIF directly if supported.
+(If you prefer conditional SARIF upload only when a file exists, add a preceding step to set an output or check for the file and use that in the `if:`.)
 
 ---
 
-## What each tool covers (mapping to OWASP Top 10)
+## What the tools cover (mapping to OWASP Top 10)
 
 - Bandit (Python) — looks for insecure code patterns, weak crypto usage, and common Python issues.
-  - Example mapping: A02 Cryptographic Failures, A03 Injection.
+  - Examples: A02 Cryptographic Failures, A03 Injection.
 - Semgrep — rule-based static analysis with OWASP Top 10 policy packs.
-  - Example mapping: A03 Injection, A04 Insecure Design, A08 Software Integrity Failures.
+  - Examples: A03 Injection, A04 Insecure Design, A08 Software Integrity Failures.
 - Checkov — IaC scanning for Terraform, Kubernetes, Dockerfiles, CloudFormation.
-  - Example mapping: A05 Security Misconfiguration, A07 Identification & Authentication Failures.
+  - Examples: A05 Security Misconfiguration, A07 Identification & Authentication Failures.
+
+(Consider adding a short table mapping common checks to specific OWASP items for your primary languages/stacks.)
 
 ---
 
@@ -129,33 +155,34 @@ Notes:
 
 Where results appear
 - Artifacts: JSON/SARIF files are saved as workflow artifacts and can be downloaded for manual triage.
-- SARIF uploads: SARIF files are uploaded to GitHub's Code scanning / Security tab, surfacing findings directly in PRs and the Security UI.
+- SARIF uploads: SARIF files are uploaded to GitHub's Code scanning / Security tab, surfacing findings in PRs and the Security UI.
 
 Triage guidance
 - Prioritize by severity:
   - Critical → fix immediately or block merge.
-  - High → plan a hotfix or include in next sprint.
+  - High → plan a hotfix or include in the next sprint.
   - Medium/Low → schedule or suppress if false positive.
-- For noisy repositories: create a baseline by running scans locally, triaging findings, and adding ignores for accepted items (see "Configuration & reducing noise").
+- For noisy repos: create a baseline by running scans locally, triaging findings, and adding ignores for accepted items (see "Configuration & reducing noise").
 
 Recording context in PRs
-- Add a short note linking to scan artifacts and relevant Security alerts in the PR description so reviewers can verify fixes.
+- Add a short note linking to scan artifacts and Security alerts in the PR description so reviewers can verify fixes.
+- Example: link to workflow run artifacts and include the top 3 findings summary.
 
 ---
 
 ## Configuration & reducing noise
 
 Semgrep
-- .semgrep.yml example: customize which rules to enable/disable and set severities.
-- .semgrepignore: exclude vendor/, third_party/, migrations/, or generated files.
+- Example `.semgrep.yml` snippet to set severities and rules (customize to repo needs).
+```yaml
+rules:
+  - id: experimental-rule
+    patterns: ...
+    severity: INFO
+    message: "..."
+```
 
-Bandit
-- Use `bandit -r . -x path/to/exclude` or create a bandit config to ignore certain tests.
-
-Checkov
-- Use `--skip-check` to skip specific checks or create `.checkov.yml` to define skip lists.
-
-Example .semgrepignore
+- `.semgrepignore` example:
 ```
 vendor/
 third_party/
@@ -163,32 +190,57 @@ migrations/
 node_modules/
 ```
 
+Bandit
+- Exclude paths:
+```bash
+bandit -r . -x path/to/exclude -f json -o bandit.json
+```
+- Or configure a bandit config file to ignore specific tests.
+
+Checkov
+- Create `.checkov.yml` to skip checks or configure paths; or use `--skip-check` CLI options.
+
 Baseline approach
-1. Run scans locally.
-2. Triage and suppress clear false positives in config files.
+1. Run scans locally against a full checkout.
+2. Triage and suppress clear false positives in config files (committed to a branch).
 3. Commit suppression/config and re-run CI.
-4. Periodically revisit suppressions.
+4. Periodically revisit suppressions to avoid staleness.
 
 ---
 
-## Performance & security notes
+## Baseline & workflow for noisy repos
+
+1. Run full scans in an isolated branch and save artifacts.
+2. Triage externally (spreadsheet or issue tracker) and generate suppression lists.
+3. Add suppressions to repository config (.semgrep.yml, .checkov.yml, Bandit config).
+4. Switch CI to run targeted scans on PRs (changed files) and full scans on schedule.
+
+---
+
+## Interpreting findings
+
+- SARIF/JSON fields to check: file path, line numbers, rule id, severity, and code snippet.
+- False positives happen: check context, search for tests/third-party code, and consider suppressing only after careful review.
+- Consider linking each major fix to a security issue/PR to track remediation and rationale.
+
+---
+
+## Performance, security & permissions notes
 
 Performance
-- Avoid running heavy scans on every small commit: run full scans on schedule or on main; run targeted scans on PRs.
-- Limit scan scope using path filters (e.g., `paths-ignore` or semgrep include/exclude).
+- Avoid running heavy scans on every small commit: run full scans nightly and targeted scans on PRs.
+- Use pip caching or a custom runner image with preinstalled scanners.
 
 Security
-- Keep workflow permissions minimal (you already use contents: read, security-events: write).
-- Never print secrets or credentials in logs; use GitHub Secrets for any credentials required by auxiliary tests.
+- Keep workflow permissions minimal.
+- Never print secrets or credentials in logs; use GitHub Secrets for any credentials.
 
 Costs & runner time
-- Installing scanners each run increases runtime — consider caching or using a custom Docker image with tools preinstalled.
+- Installing scanners each run increases runtime — consider caching or prebuilt images.
 
 ---
 
 ## Mermaid flowchart (visual)
-
-If README is rendered on a platform that supports Mermaid, paste the following block to get a visual flow.
 
 ```mermaid
 flowchart LR
@@ -225,15 +277,21 @@ flowchart LR
 
 ---
 
-## Contributing
+## Contributing & Security
 
-Contributions welcome — please open issues or PRs for:
+Contributions welcome — open issues or PRs for:
 - New rules or config improvements
 - Better triage guidance or automation
 - Performance optimizations
+
+Security disclosure
+- If you find a security issue with this workflow or the repository, please follow our [SECURITY.md] (add one if missing) or open a private disclosure issue.
 
 ---
 
 ## License
 
 This repository is provided under the MIT License. See LICENSE.
+``` 
+
+Would you like me to open a PR with this updated README and example config files (.semgrepignore, .checkov.yml)?
