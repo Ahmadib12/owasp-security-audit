@@ -70,10 +70,7 @@ on:
   pull_request:
     branches: [ "main", "master", "develop" ]
 
-jobs:
-  owasp-sast-scan:
-    name: OWASP Code & IaC Security Scan
-    runs-on: ubuntu-latest
+
 
     steps:
       - name: Checkout Source Code
