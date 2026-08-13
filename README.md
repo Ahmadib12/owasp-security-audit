@@ -294,4 +294,3 @@ Security disclosure
 This repository is provided under the MIT License. See LICENSE.
 ``` 
 
-Would you like me to open a PR with this updated README and example config files (.semgrepignore, .checkov.yml)?
