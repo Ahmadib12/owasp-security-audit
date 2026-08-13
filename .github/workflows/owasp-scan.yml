@@ -13,9 +13,6 @@ jobs:
   owasp-sast-scan:
     name: OWASP Code & IaC Security Scan
     runs-on: ubuntu-latest
-jobs:
-  owasp-sast-scan:
-    runs-on: ubuntu-latest
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
