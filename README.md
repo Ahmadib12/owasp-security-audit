@@ -2,148 +2,152 @@
 
 [![Workflow](https://img.shields.io/badge/GitHub%20Actions-enabled-blue)](https://github.com/Ahmadib12/owasp-security-audit/actions)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
-[![OWASP Top 10 2025](https://img.shields.io/badge/OWASP-Top%2010%202025-orange)](https://owasp.org/www-project-top-ten/)
+[![OWASP Top 10](https://img.shields.io/badge/OWASP-Top%2010-orange)](https://owasp.org/www-project-top-ten/)
 
-One-line: GitHub Actions workflow and local tooling to run SAST and IaC scans (Bandit, Semgrep, Checkov) and map findings to OWASP Top 10:2025 risks.
+One-line: GitHub Actions workflow and local tooling to run Semgrep, Bandit and Checkov scans and map findings to OWASP Top 10 (aligned to OWASP Top 10:2025 via OWASP-CWE-Mapping.md).
 
 Table of contents
-- [Quickstart (local)](#quickstart-local)
-- [Example GitHub Actions workflow](#example-github-actions-workflow)
-- [What the tools cover (mapping to OWASP Top 10:2025)](#what-the-tools-cover-mapping-to-owasp-top-102025)
-- [OWASP Top 10:2025 Categories & CWE Mappings](#owasp-top-102025-categories--cwe-mappings)
-- [Uploading & triaging results](#uploading--triaging-results)
-- [Configuration & reducing noise](#configuration--reducing-noise)
-- [Baseline & workflow for noisy repos](#baseline--workflow-for-noisy-repos)
-- [Interpreting findings](#interpreting-findings)
-- [Performance, security & permissions notes](#performance-security--permissions-notes)
-- [Mermaid flowchart (visual)](#mermaid-flowchart-visual)
-- [References](#references)
-- [Contributing & Security](#contributing--security)
-- [License](#license)
+- Quickstart (local)
+- Example GitHub Actions workflow (what this repo runs)
+- OWASP → CWE mapping (how to use OWASP-CWE-Mapping.md)
+- Uploading & triaging results
+- Configuration & reducing noise
+- Troubleshooting & notes
+- References
+- License
 
 ---
 
 ## Quickstart (local)
 
 Prerequisites
-- Python 3.8+ (Bandit, Semgrep)
+- Python 3.x
 - pip
-- checkov (Python package)
-
-
-Run scans locally (examples)
-
-# Bandit (JSON)
-bandit -r . -f json -o bandit.json || true
-
-# Semgrep (OWASP policy pack)
-semgrep --config "p/owasp-top-ten" --json --output semgrep.json . || true
-
-# Checkov (SARIF)
-checkov -d . --output sarif --output-file-path checkov_results.sarif || true
-
-Expect output files:
-
-Expect output files:
-
-bandit.json
-semgrep.json
-checkov_results.sarif
-Quick tip: run scans against changed paths in PRs to reduce noise and runtime.
-Example GitHub Actions workflow
-Save as .github/workflows/owasp-scan.yml.
-
-Notes included in the workflow:
-
-Single steps: block with all three security scanners (Semgrep, Bandit, Checkov).
-Limit permissions to minimal required.
-Bandit JSON output for structured findings.
-Artifact upload for manual review and triage.
-
-
-name: OWASP Top 10 Security Audit
-
-on:
-  push:
-    branches: [ "main", "master", "develop" ]
-  pull_request:
-    branches: [ "main", "master", "develop" ]
-
-permissions:
-  contents: read          # least privilege, only read repo contents
-  security-events: write  # needed if you upload SARIF results
-
-jobs:
-  owasp-sast-scan:
-    name: OWASP Code & IaC Security Scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
-
-      # ---------------------------------------------------------------
-      # 1. Semgrep: OWASP Top 10 Multi-Language Ruleset
-      # ---------------------------------------------------------------
-      - name: Run Semgrep (OWASP Ruleset)
-        uses: semgrep/semgrep-action@v1
-        with:
-          config: >-
-            p/owasp-top-10
-
-      # ---------------------------------------------------------------
-      # 2. Bandit: Python Security Rules (Injection, Crypto, Secrets)
-      # ---------------------------------------------------------------
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
-      - name: Install & Run Bandit
-        run: |
-          pip install bandit
-          # Scans recursively and saves JSON results
-          bandit -r . -f json -o bandit.json
-
-      - name: Upload Bandit JSON results
-        uses: actions/upload-artifact@v4
-        with:
-          name: bandit-results
-          path: bandit.json
-
-      # ---------------------------------------------------------------
-      # 3. Checkov: Infrastructure as Code & Security Misconfigurations
-      # ---------------------------------------------------------------
-      - name: Run Checkov Scan
-        uses: bridgecrewio/checkov-action@master
-        with:
-          directory: '.'
-          framework: 'all'
-          output_format: 'cli'
-          soft_fail: false
-
-          What the tools cover (mapping to OWASP Top 10:2025)
-Bandit (Python) — identifies insecure code patterns, weak cryptography, and Python-specific vulnerabilities.
-Maps to: A04 Cryptographic Failures, A05 Injection, A07 Authentication Failures.
-Semgrep — rule-based static analysis with OWASP Top 10:2025 policy packs.
-Maps to: A01 Broken Access Control, A05 Injection, A06 Insecure Design, A08 Software or Data Integrity Failures.
-Checkov — Infrastructure-as-Code (IaC) scanning for Terraform, Kubernetes, Dockerfiles, CloudFormation, and cloud policies.
-Maps to: A02 Security Misconfiguration, A03 Software Supply Chain Failures, A07 Authentication Failures.
-For detailed CWE mappings, see OWASP-CWE-Mapping.md.
-
-OWASP Top 10:2025 Categories & CWE Mappings
-Rank	Category	Primary CWEs	Common Findings
-A01:2025	Broken Access Control	CWE-284, CWE-285, CWE-639	Authorization bypass, missing ACL checks, insecure direct object references
-A02:2025	Security Misconfiguration	CWE-16, CWE-611, CWE-250	Default credentials, exposed debug endpoints, misconfigured services, XXE
-A03:2025	Software Supply Chain Failures	CWE-1104, CWE-494, CWE-829	Unmaintained dependencies, dependency tampering, unsigned downloads
-A04:2025	Cryptographic Failures	CWE-327, CWE-328, CWE-311	Weak algorithms/hashes, missing encryption at rest/in transit
-A05:2025	Injection	CWE-89, CWE-94, CWE-77	SQL injection, code/eval injection, command injection
-A06:2025	Insecure Design	CWE-209, CWE-693, CWE-840	Architectural flaws, business-logic weaknesses, missing threat model mitigations
-A07:2025	Authentication Failures	CWE-287, CWE-613, CWE-798	Broken/insufficient authentication, weak sessions, hard-coded credentials
-A08:2025	Software or Data Integrity Failures	CWE-494, CWE-1104, CWE-347	Unsigned updates, tampered data, unvalidated deserialization
-A09:2025	Security Logging and Alerting Failures	CWE-778, CWE-223	Missing/insufficient logs, no alerting on suspicious activity
-A10:2025	Mishandling of Exceptional Conditions	CWE-703, CWE-391, CWE-209	Unchecked errors, unsafe exception handling, information exposure via errors
-Note: This mapping aligns with OWASP Top 10:2025. For detailed CWE definitions and tool-specific coverage, see OWASP-CWE-Mapping.md.
+- semgrep, bandit, checkov (optional to run locally)
 
 Install
 ```bash
 python -m pip install --upgrade pip
+pip install semgrep bandit checkov
+```
+
+Run the same scanners locally (examples)
+```bash
+# Semgrep (OWASP rules)
+semgrep --config "p/owasp-top-10" --json --output semgrep.json .
+
+# Bandit (as used in the workflow)
+pip install bandit
+bandit -r . -l -iii
+
+# Checkov (CLI)
+checkov -d . --output cli
+```
+
+Expect these outputs (if run with the shown flags):
+- semgrep.json (Semgrep JSON)
+- Bandit stdout (Bandit flags shown)
+- Checkov CLI output
+
+---
+
+## Example GitHub Actions workflow (this repository)
+
+Workflow file: .github/workflows/owasp-scan.yml
+
+Key implemented steps (mirror the workflow)
+- Triggers: push and pull_request on branches "main", "master", "develop".
+- Permissions:
+  - contents: read
+  - security-events: write
+- Semgrep
+  - uses: semgrep/semgrep-action@v1
+  - config: `p/owasp-top-10`
+- Bandit
+  - uses: actions/setup-python@v5
+  - installs bandit, runs: `bandit -r . -l -iii`
+- Checkov
+  - uses: bridgecrewio/checkov-action@master
+  - with: `directory: '.'`, `framework: 'all'`, `output_format: 'cli'`, `soft_fail: false`
+
+Notes:
+- The workflow installs Bandit during the job and runs Semgrep and Checkov via actions.
+- If you want SARIF uploads, artifact uploads, or caching, add steps for conversion/upload and cache actions (not included in the current workflow).
+
+---
+
+## OWASP → CWE mapping (alignment)
+
+This repository includes OWASP-CWE-Mapping.md (OWASP Top 10:2025 aligned). Use it to standardize triage, reporting, and automation.
+
+How to use the mapping:
+- Semgrep: add `cwe:` metadata to custom rules or map Semgrep rule IDs to CWE IDs in post-processing. Example Semgrep metadata:
+  ```yaml
+  metadata:
+    cwe: "CWE-89"
+  ```
+- Bandit: map Bandit test IDs to CWE(s) in a small lookup table in your CI or triage scripts.
+- Checkov: map Checkov rule IDs to CWE(s) using the YAML in OWASP-CWE-Mapping.md (a machine-readable example is included in that file).
+
+Practical integration ideas:
+- Post-process tool outputs and attach the matching CWE(s) from OWASP-CWE-Mapping.md to every finding before uploading to tracking systems or SARIF.
+- Use the included owasp-cwe-mapping.yml example (from OWASP-CWE-Mapping.md) as a canonical lookup in CI conversion scripts.
+
+---
+
+## Uploading & triaging results
+
+Where results appear
+- The workflow runs scanners; capture outputs and upload artifacts or convert to SARIF for GitHub Code scanning (add SARIF upload step if you want findings in Security UI).
+
+Triage guidance
+- Prioritize by severity: Critical / High / Medium / Low.
+- Use OWASP-CWE-Mapping.md to tag findings with CWE(s) and map them to OWASP categories for consistent tracking.
+- For noisy repos: establish a baseline, triage findings, commit suppressions, and run targeted scans on PRs.
+
+Recording context in PRs
+- Link to workflow artifacts and list the top findings and mapped CWE/OWASP category to help reviewers.
+
+---
+
+## Configuration & reducing noise
+
+Semgrep
+- Use `.semgrep.yml` to enable/disable rules and set severities.
+- Use `.semgrepignore` to exclude vendor/third_party/node_modules etc.
+
+Bandit
+- Use `-x` or a Bandit config to exclude paths or tests.
+
+Checkov
+- Use `.checkov.yml` or `--skip-check` to skip specific checks.
+
+Baseline workflow
+1. Run full scans locally.
+2. Triage and add suppressions to config files.
+3. Commit suppressions and re-run CI to establish a stable baseline.
+4. Run targeted scans for PRs and full scans on a schedule.
+
+---
+
+## Troubleshooting & notes
+
+- The repository workflow installs Bandit at runtime; consider caching pip or using a prebuilt runner image to save time.
+- Confirm Bandit flags (`-l -iii`) are what you expect; consider producing JSON output (`-f json -o bandit.json`) for easier automation.
+- Keep OWASP-CWE-Mapping.md up to date if you change OWASP version or add custom rules—this README assumes OWASP Top 10:2025 alignment.
+
+---
+
+## References
+
+- OWASP Top 10: https://owasp.org/www-project-top-ten/
+- OWASP-CWE-Mapping.md (this repo)
+- Semgrep docs: https://semgrep.dev/docs/
+- Bandit docs: https://bandit.readthedocs.io/
+- Checkov docs: https://www.checkov.io/
+
+---
+
+## License
+
+This repository is provided under the MIT License. See LICENSE.
